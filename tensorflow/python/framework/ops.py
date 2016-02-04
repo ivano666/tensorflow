@@ -784,8 +784,9 @@ class IndexedSlices(object):
         self._indices, self._values,
         (", dense_shape=%s" % self._dense_shape) if self._dense_shape else "")
 
-IndexedSlicesValue = collections.namedtuple("IndexedSlicesValue",
-                                            ["values", "indices", "dense_shape"])
+  def __neg__(self):
+    return IndexedSlices(-self.values, self.indices, self.dense_shape)
+
 
 IndexedSlicesValue = collections.namedtuple(
     "IndexedSlicesValue", ["values", "indices", "dense_shape"])
@@ -800,7 +801,7 @@ class SparseTensor(object):
   `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
   object before passing to the ops below.
 
-  Concretely, the sparse tensor `SparseTensor(values, indices, shape)` is
+  Concretely, the sparse tensor `SparseTensor(indices, values, shape)` is
 
   * `indices`: A 2-D int64 tensor of shape `[N, ndims]`.
   * `values`: A 1-D tensor of any type and shape `[N]`.
@@ -825,7 +826,7 @@ class SparseTensor(object):
   Example: The sparse tensor
 
   ```python
-  SparseTensor(values=[1, 2], indices=[[0, 0], [1, 2]], shape=[3, 4])
+  SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], shape=[3, 4])
   ```
 
   represents the dense tensor
@@ -2267,8 +2268,11 @@ class Graph(object):
   def add_to_collection(self, name, value):
     """Stores `value` in the collection with the given `name`.
 
+    Note that collections are not sets, so it is possible to add a value to
+    a collection several times.
+
     Args:
-      name: The key for the collection. For example, the `GraphKeys` class
+      name: The key for the collection. The `GraphKeys` class
         contains many standard names for collections.
       value: The value to add to the collection.
     """
@@ -2278,11 +2282,27 @@ class Graph(object):
     else:
       self._collections[name].append(value)
 
+  def add_to_collections(self, names, value):
+    """Stores `value` in the collections given by `names`.
+
+    Note that collections are not sets, so it is possible to add a value to
+    a collection several times. This function makes sure that duplicates in
+    `names` are ignored, but it will not check for pre-existing membership of
+    `value` in any of the collections in `names`.
+
+    Args:
+      names: The keys for the collections to add to. The `GraphKeys` class
+        contains many standard names for collections.
+      value: The value to add to the collections.
+    """
+    for name in set(names):
+      self.add_to_collection(name, value)
+
   def get_collection(self, name, scope=None):
     """Returns a list of values in the collection with the given `name`.
 
     Args:
-      key: The key for the collection. For example, the `GraphKeys` class
+      name: The key for the collection. For example, the `GraphKeys` class
         contains many standard names for collections.
       scope: (Optional.) If supplied, the resulting list is filtered to include
         only items whose name begins with this string.
@@ -2352,34 +2372,34 @@ class Graph(object):
     ```python
     with tf.Graph().as_default() as g:
       c = tf.constant(5.0, name="c")
-      assert c_1.name == "c"
+      assert c_1.op.name == "c"
       c_1 = tf.constant(6.0, name="c")
-      assert c_1.name == "c_1"
+      assert c_1.op.name == "c_1"
 
       # Creates a scope called "nested"
       with g.name_scope("nested") as scope:
         nested_c = tf.constant(10.0, name="c")
-        assert nested_c.name == "nested/c"
+        assert nested_c.op.name == "nested/c"
 
         # Creates a nested scope called "inner".
         with g.name_scope("inner"):
           nested_inner_c = tf.constant(20.0, name="c")
-          assert nested_inner_c.name == "nested/inner/c"
+          assert nested_inner_c.op.name == "nested/inner/c"
 
         # Create a nested scope called "inner_1".
         with g.name_scope("inner"):
           nested_inner_1_c = tf.constant(30.0, name="c")
-          assert nested_inner_1_c.name == "nested/inner_1/c"
+          assert nested_inner_1_c.op.name == "nested/inner_1/c"
 
           # Treats `scope` as an absolute name scope, and
           # switches to the "nested/" scope.
           with g.name_scope(scope):
             nested_d = tf.constant(40.0, name="d")
-            assert nested_d.name == "nested/d"
+            assert nested_d.op.name == "nested/d"
 
             with g.name_scope(""):
               e = tf.constant(50.0, name="e")
-              assert e.name == "e"
+              assert e.op.name == "e"
     ```
 
     The name of the scope itself can be captured by `with
@@ -2396,7 +2416,6 @@ class Graph(object):
       affine = tf.matmul(inputs, weights) + biases
       output = tf.nn.relu(affine, name=scope)
     ```
-
 
     Args:
       name: A name for the scope.
@@ -3340,6 +3359,8 @@ class GraphKeys(object):
   MOVING_AVERAGE_VARIABLES = "moving_average_variables"
   # Key to collected regularization losses at graph construction.
   REGULARIZATION_LOSSES = "regularization_losses"
+  # Key to collect concatenated sharded variables.
+  CONCATENATED_VARIABLES = "concatenated_variables"
 
 
 def add_to_collection(name, value):
@@ -3354,6 +3375,20 @@ def add_to_collection(name, value):
     value: The value to add to the collection.
   """
   get_default_graph().add_to_collection(name, value)
+
+
+def add_to_collections(names, value):
+  """Wrapper for `Graph.add_to_collections()` using the default graph.
+
+  See [`Graph.add_to_collections()`](../../api_docs/python/framework.md#Graph.add_to_collections)
+  for more details.
+
+  Args:
+    names: The key for the collections. The `GraphKeys` class
+      contains many standard names for collections.
+    value: The value to add to the collections.
+  """
+  get_default_graph().add_to_collections(names, value)
 
 
 def get_collection(key, scope=None):

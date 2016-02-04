@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Copyright 2015 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-set -e
+"""contrib module containing volatile or experimental layers code."""
 
-bazel build -c opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
-rm -rf $HOME/.cache/tensorflow-pip
-bazel-bin/tensorflow/tools/pip_package/build_pip_package $HOME/.cache/tensorflow-pip
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+# pylint: disable=wildcard-import,unused-import
+from tensorflow.contrib.layers.python.framework.tensor_util import *
