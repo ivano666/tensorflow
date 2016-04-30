@@ -23,8 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -54,6 +56,7 @@ REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
   REGISTER_KERNEL_BUILDER(                                            \
       Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
+REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
@@ -66,36 +69,26 @@ REGISTER_KERNEL(GPU, bool);
 #undef REGISTER_KERNEL
 #endif
 
-// HostConstantOp differs from ConstantOp in that its output is always
-// in host memory.
-class HostConstantOp : public OpKernel {
- public:
-  explicit HostConstantOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), tensor_(ctx->output_type(0)) {
-    const TensorProto* proto = nullptr;
-    AllocatorAttributes alloc_attr;
-    alloc_attr.set_on_host(true);
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
-    OP_REQUIRES_OK(
-        ctx, ctx->device()->MakeTensorFromProto(*proto, alloc_attr, &tensor_));
-    OP_REQUIRES(
-        ctx, ctx->output_type(0) == tensor_.dtype(),
-        errors::InvalidArgument(
-            "Type mismatch between value (", DataTypeString(tensor_.dtype()),
-            ") and dtype (", DataTypeString(ctx->output_type(0)), ")"));
-  }
+HostConstantOp::HostConstantOp(OpKernelConstruction* ctx)
+    : OpKernel(ctx), tensor_(ctx->output_type(0)) {
+  const TensorProto* proto = nullptr;
+  AllocatorAttributes alloc_attr;
+  alloc_attr.set_on_host(true);
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
+  OP_REQUIRES_OK(
+      ctx, ctx->device()->MakeTensorFromProto(*proto, alloc_attr, &tensor_));
+  OP_REQUIRES(
+      ctx, ctx->output_type(0) == tensor_.dtype(),
+      errors::InvalidArgument("Type mismatch between value (",
+                              DataTypeString(tensor_.dtype()), ") and dtype (",
+                              DataTypeString(ctx->output_type(0)), ")"));
+}
 
-  void Compute(OpKernelContext* ctx) override { ctx->set_output(0, tensor_); }
+void HostConstantOp::Compute(OpKernelContext* ctx) {
+  ctx->set_output(0, tensor_);
+}
 
-  bool IsExpensive() override { return false; }
-
-  ~HostConstantOp() override {}
-
- private:
-  Tensor tensor_;
-  TF_DISALLOW_COPY_AND_ASSIGN(HostConstantOp);
-};
-
+#if GOOGLE_CUDA
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -104,6 +97,7 @@ REGISTER_KERNEL_BUILDER(Name("Const")
                             .HostMemory("output")
                             .TypeConstraint<int32>("dtype"),
                         HostConstantOp);
+#endif
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -123,11 +117,12 @@ struct FillFunctor<CPUDevice, T> {
 template <typename T>
 struct SetZeroFunctor<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat out) {
-    out.device(d) = out.constant(0);
+    out.device(d) = out.constant(T());
   }
 };
 
 #define DEFINE_SETZERO_CPU(T) template struct SetZeroFunctor<CPUDevice, T>
+DEFINE_SETZERO_CPU(Eigen::half);
 DEFINE_SETZERO_CPU(float);
 DEFINE_SETZERO_CPU(double);
 DEFINE_SETZERO_CPU(int32);
@@ -152,6 +147,10 @@ class FillOp : public OpKernel {
                 errors::InvalidArgument("value must be a scalar, got shape ",
                                         Tvalue.shape().DebugString()));
     auto dims = Tdims.flat<int32>();
+    OP_REQUIRES(context,
+                FastBoundsCheck(dims.size(), TensorShape::MaxDimensions()),
+                errors::InvalidArgument("dims must have size < ",
+                                        TensorShape::MaxDimensions()));
     for (int i = 0; i < dims.size(); i++) {
       OP_REQUIRES(context, dims(i) >= 0,
                   errors::InvalidArgument("dims[", i, "] = ", dims(i),
@@ -160,7 +159,7 @@ class FillOp : public OpKernel {
     TensorShape shape;
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
                                 reinterpret_cast<const int32*>(dims.data()),
-                                dims.size(), &shape));
+                                static_cast<int>(dims.size()), &shape));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
     functor::FillFunctor<Device, T> functor;
@@ -181,6 +180,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);
@@ -188,10 +188,6 @@ REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, int16);
 REGISTER_KERNEL(GPU, int64);
 // Currently we do not support filling strings and complex64 on GPU
-
-#endif  // GOOGLE_CUDA
-
-#undef REGISTER_KERNEL
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -203,6 +199,9 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
                             .HostMemory("value")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32>);
+#endif
+
+#undef REGISTER_KERNEL
 
 template <typename Device, typename T>
 class ZerosLikeOp : public OpKernel {
@@ -213,11 +212,8 @@ class ZerosLikeOp : public OpKernel {
     const Tensor& input = ctx->input(0);
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &out));
-    Tensor zero(DataTypeToEnum<T>::value, {1});
-    zero.scalar<T>().setZero();
-    const Tensor& zero_cref = zero;
-    functor::FillFunctor<Device, T> functor;
-    functor(ctx->eigen_device<Device>(), out->flat<T>(), zero_cref.scalar<T>());
+    functor::SetZeroFunctor<Device, T> f;
+    f(ctx->eigen_device<Device>(), out->flat<T>());
   }
 };
 
@@ -231,10 +227,14 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU(type) REGISTER_KERNEL(type, GPU)
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU);
-REGISTER_GPU(bool);
-#undef REGISTER_GPU
+REGISTER_KERNEL(Eigen::half, GPU);
+REGISTER_KERNEL(float, GPU);
+REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL_BUILDER(Name("ZerosLike")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("y"),
+                        ZerosLikeOp<CPUDevice, int32>);
 #endif  // GOOGLE_CUDA
 
 #undef REGISTER_KERNEL

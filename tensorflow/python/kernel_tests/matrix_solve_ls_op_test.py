@@ -12,19 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.math_ops.matrix_solve."""
-# pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
 import tensorflow as tf
-
-# pylint: enable=unused-import,g-bad-import-order
 
 
 def BatchMatMul(a, b):
@@ -73,11 +67,13 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
       np_ans, _, _, _ = np.linalg.lstsq(a, b)
       for fast in [True, False]:
         with self.test_session():
-          tf_ans = tf.matrix_solve_ls(a, b, fast=fast).eval()
-        self.assertEqual(np_ans.shape, tf_ans.shape)
+          tf_ans = tf.matrix_solve_ls(a, b, fast=fast)
+          ans = tf_ans.eval()
+        self.assertEqual(np_ans.shape, tf_ans.get_shape())
+        self.assertEqual(np_ans.shape, ans.shape)
 
         # Check residual norm.
-        tf_r = b - BatchMatMul(a, tf_ans)
+        tf_r = b - BatchMatMul(a, ans)
         tf_r_norm = np.sum(tf_r * tf_r)
         np_r = b - BatchMatMul(a, np_ans)
         np_r_norm = np.sum(np_r * np_r)
@@ -89,7 +85,7 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
           # slow path, because Eigen does not return a minimum norm solution.
           # TODO(rmlarsen): Enable this check for all paths if/when we fix
           # Eigen's solver.
-          self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
+          self.assertAllClose(np_ans, ans, atol=1e-5, rtol=1e-5)
 
   def _verifySolveBatch(self, x, y):
     # Since numpy.linalg.lsqr does not support batch solves, as opposed
@@ -128,24 +124,28 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
       b = y.astype(np_type)
       np_ans = BatchRegularizedLeastSquares(a, b, l2_regularizer)
       with self.test_session():
-        tf_ans = tf.matrix_solve_ls(a,
-                                    b,
-                                    l2_regularizer=l2_regularizer,
-                                    fast=True).eval()
-      self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
+        # Test with the batch version of  matrix_solve_ls on regular matrices
+        tf_ans = tf.batch_matrix_solve_ls(
+            a, b, l2_regularizer=l2_regularizer, fast=True).eval()
+        self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
+
+        # Test with the simple matrix_solve_ls on regular matrices
+        tf_ans = tf.matrix_solve_ls(
+            a, b, l2_regularizer=l2_regularizer, fast=True).eval()
+        self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
+
       # Test with a 2x3 batch of matrices.
       a = np.tile(x.astype(np_type), [2, 3, 1, 1])
       b = np.tile(y.astype(np_type), [2, 3, 1, 1])
       np_ans = BatchRegularizedLeastSquares(a, b, l2_regularizer)
       with self.test_session():
-        tf_ans = tf.batch_matrix_solve_ls(a,
-                                          b,
-                                          l2_regularizer=l2_regularizer,
-                                          fast=True).eval()
+        tf_ans = tf.batch_matrix_solve_ls(
+            a, b, l2_regularizer=l2_regularizer, fast=True).eval()
       self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
 
   def testSquare(self):
     # 2x2 matrices, 2x3 right-hand sides.
+
     matrix = np.array([[1., 2.], [3., 4.]])
     rhs = np.array([[1., 0., 1.], [0., 1., 1.]])
     self._verifySolve(matrix, rhs)
@@ -192,6 +192,15 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
         self.assertEqual(tf_ans.shape, (2, 0))
         tf_ans = tf.matrix_solve_ls(empty1, empty1, fast=fast).eval()
         self.assertEqual(tf_ans.shape, (2, 2))
+
+  def testBatchResultSize(self):
+    # 3x3x3 matrices, 3x3x1 right-hand sides.
+    matrix = np.array([1., 2., 3., 4., 5., 6., 7., 8., 9.] * 3).reshape(3, 3, 3)
+    rhs = np.array([1., 2., 3.] * 3).reshape(3, 3, 1)
+    answer = tf.batch_matrix_solve(matrix, rhs)
+    ls_answer = tf.batch_matrix_solve_ls(matrix, rhs)
+    self.assertEqual(ls_answer.get_shape(), [3, 3, 1])
+    self.assertEqual(answer.get_shape(), [3, 3, 1])
 
 
 if __name__ == "__main__":

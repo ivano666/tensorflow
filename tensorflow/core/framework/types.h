@@ -71,6 +71,7 @@ extern const char* const DEVICE_CPU;  // "CPU"
 extern const char* const DEVICE_GPU;  // "GPU"
 
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
+typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
 
 typedef gtl::InlinedVector<DataType, 4> DataTypeVector;
 typedef gtl::ArraySlice<DataType> DataTypeSlice;
@@ -173,6 +174,7 @@ MATCH_TYPE_AND_ENUM(int16, DT_INT16);
 MATCH_TYPE_AND_ENUM(int8, DT_INT8);
 MATCH_TYPE_AND_ENUM(string, DT_STRING);
 MATCH_TYPE_AND_ENUM(complex64, DT_COMPLEX64);
+MATCH_TYPE_AND_ENUM(complex128, DT_COMPLEX128);
 MATCH_TYPE_AND_ENUM(int64, DT_INT64);
 MATCH_TYPE_AND_ENUM(bool, DT_BOOL);
 MATCH_TYPE_AND_ENUM(qint8, DT_QINT8);
@@ -181,12 +183,16 @@ MATCH_TYPE_AND_ENUM(qint16, DT_QINT16);
 MATCH_TYPE_AND_ENUM(quint16, DT_QUINT16);
 MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
 MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
+MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
 
 #undef MATCH_TYPE_AND_ENUM
 
 bool DataTypeCanUseMemcpy(DataType dt);
 
 bool DataTypeIsQuantized(DataType dt);
+
+// Returns a 0 on failure
+int DataTypeSize(DataType dt);
 
 }  // namespace tensorflow
 

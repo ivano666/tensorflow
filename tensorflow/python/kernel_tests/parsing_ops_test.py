@@ -19,11 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,g-bad-import-order
-import tensorflow.python.platform
-# pylint: enable=unused-import,g-bad-import-order
-
 import itertools
+
 import numpy as np
 import tensorflow as tf
 
@@ -98,7 +95,7 @@ class ParseExampleTest(tf.test.TestCase):
       batch_size = (
           serialized.eval().size if isinstance(serialized, tf.Tensor)
           else np.asarray(serialized).size)
-      for k, f in kwargs["features"].iteritems():
+      for k, f in kwargs["features"].items():
         if isinstance(f, tf.FixedLenFeature) and f.shape is not None:
           self.assertEqual(
               tuple(out[k].get_shape().as_list()), (batch_size,) + f.shape)
@@ -367,7 +364,7 @@ class ParseSingleExampleTest(tf.test.TestCase):
         _compare_output_to_expected(self, out, expected_values, tf_result)
 
       # Check shapes.
-      for k, f in kwargs["features"].iteritems():
+      for k, f in kwargs["features"].items():
         if isinstance(f, tf.FixedLenFeature) and f.shape is not None:
           self.assertEqual(tuple(out[k].get_shape()), f.shape)
         elif isinstance(f, tf.VarLenFeature):
@@ -437,15 +434,19 @@ class ParseSequenceExampleTest(tf.test.TestCase):
       if expected_err:
         with self.assertRaisesRegexp(expected_err[0], expected_err[1]):
           c_out, fl_out = tf.parse_single_sequence_example(**kwargs)
-          sess.run(flatten_values_tensors_or_sparse(c_out.values()))
-          sess.run(flatten_values_tensors_or_sparse(fl_out.values()))
+          if c_out:
+            sess.run(flatten_values_tensors_or_sparse(c_out.values()))
+          if fl_out:
+            sess.run(flatten_values_tensors_or_sparse(fl_out.values()))
       else:
         # Returns dicts w/ Tensors and SparseTensors.
         context_out, feat_list_out = tf.parse_single_sequence_example(**kwargs)
         context_result = sess.run(
-            flatten_values_tensors_or_sparse(context_out.values()))
+            flatten_values_tensors_or_sparse(
+                context_out.values())) if context_out else []
         feat_list_result = sess.run(
-            flatten_values_tensors_or_sparse(feat_list_out.values()))
+            flatten_values_tensors_or_sparse(
+                feat_list_out.values())) if feat_list_out else []
         # Check values.
         _compare_output_to_expected(
             self, context_out, expected_context_values, context_result)
@@ -455,7 +456,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
       # Check shapes; if serialized is a Tensor we need its size to
       # properly check.
       if "context_features" in kwargs:
-        for k, f in kwargs["context_features"].iteritems():
+        for k, f in kwargs["context_features"].items():
           if isinstance(f, tf.FixedLenFeature) and f.shape is not None:
             self.assertEqual(
                 tuple(context_out[k].get_shape().as_list()), f.shape)
@@ -565,7 +566,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
 
     expected_st_b = (
         np.array([[0, 0], [3, 0], [3, 1]], dtype=np.int64),  # indices
-        np.array(["a", "b", "c"], dtype=np.str),  # values
+        np.array(["a", "b", "c"], dtype="|S"),  # values
         np.array([4, 2], dtype=np.int64))  # shape: num_time = 4, max_feat = 2
 
     expected_st_c = (
@@ -614,7 +615,7 @@ class ParseSequenceExampleTest(tf.test.TestCase):
 
     expected_st_b = (
         np.array([[0, 0], [3, 0], [3, 1]], dtype=np.int64),  # indices
-        np.array(["a", "b", "c"], dtype=np.str),  # values
+        np.array(["a", "b", "c"], dtype="|S"),  # values
         np.array([4, 2], dtype=np.int64))  # shape: num_time = 4, max_feat = 2
 
     expected_st_c = (

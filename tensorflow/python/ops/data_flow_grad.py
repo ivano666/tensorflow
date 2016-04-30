@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -68,6 +69,7 @@ ops.NoGradient("QueueEnqueue")
 ops.NoGradient("QueueEnqueueMany")
 ops.NoGradient("QueueDequeue")
 ops.NoGradient("QueueDequeueMany")
+ops.NoGradient("QueueDequeueUpTo")
 ops.NoGradient("QueueClose")
 ops.NoGradient("QueueSize")
 
@@ -75,3 +77,7 @@ ops.NoGradient("Stack")
 ops.NoGradient("StackPush")
 ops.NoGradient("StackPop")
 ops.NoGradient("StackClose")
+
+ops.NoGradient("GetSessionHandle")
+ops.NoGradient("GetSessionTensor")
+ops.NoGradient("DeleteSessionTensor")

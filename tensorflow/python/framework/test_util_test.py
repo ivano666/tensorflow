@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import threading
 
-import tensorflow.python.platform
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -166,6 +165,19 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertAllClose(7, 7 + 1e-8)
     with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(7, 8)
+
+  def testArrayNear(self):
+    a = [1, 2]
+    b = [1, 2, 5]
+    with self.assertRaises(AssertionError):
+      self.assertArrayNear(a, b, 0.001)
+    a = [1, 2]
+    b = [[1, 2], [3, 4]]
+    with self.assertRaises(TypeError):
+      self.assertArrayNear(a, b, 0.001)
+    a = [1, 2]
+    b = [1, 2]
+    self.assertArrayNear(a, b, 0.001)
 
   def testForceGPU(self):
     with self.assertRaisesRegexp(errors.InvalidArgumentError,

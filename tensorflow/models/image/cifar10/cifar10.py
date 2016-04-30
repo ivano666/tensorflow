@@ -41,7 +41,6 @@ import re
 import sys
 import tarfile
 
-import tensorflow.python.platform
 from six.moves import urllib
 import tensorflow as tf
 
@@ -68,7 +67,7 @@ NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 INITIAL_LEARNING_RATE = 0.1       # Initial learning rate.
 
-# If a model is trained with multiple GPU's prefix all Op names with tower_name
+# If a model is trained with multiple GPUs, prefix all Op names with tower_name
 # to differentiate the operations. Note that this prefix is removed from the
 # names of the summaries when visualizing a model.
 TOWER_NAME = 'tower'
@@ -128,7 +127,7 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
   """
   var = _variable_on_cpu(name, shape,
                          tf.truncated_normal_initializer(stddev=stddev))
-  if wd:
+  if wd is not None:
     weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
     tf.add_to_collection('losses', weight_decay)
   return var
@@ -222,11 +221,8 @@ def inference(images):
   # local3
   with tf.variable_scope('local3') as scope:
     # Move everything into depth so we can perform a single matrix multiply.
-    dim = 1
-    for d in pool2.get_shape()[1:].as_list():
-      dim *= d
-    reshape = tf.reshape(pool2, [FLAGS.batch_size, dim])
-
+    reshape = tf.reshape(pool2, [FLAGS.batch_size, -1])
+    dim = reshape.get_shape()[1].value
     weights = _variable_with_weight_decay('weights', shape=[dim, 384],
                                           stddev=0.04, wd=0.004)
     biases = _variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
@@ -256,7 +252,7 @@ def inference(images):
 def loss(logits, labels):
   """Add L2Loss to all the trainable variables.
 
-  Add summary for for "Loss" and "Loss/avg".
+  Add summary for "Loss" and "Loss/avg".
   Args:
     logits: Logits from inference().
     labels: Labels from distorted_inputs or inputs(). 1-D tensor
@@ -265,18 +261,10 @@ def loss(logits, labels):
   Returns:
     Loss tensor of type float.
   """
-  # Reshape the labels into a dense Tensor of
-  # shape [batch_size, NUM_CLASSES].
-  sparse_labels = tf.reshape(labels, [FLAGS.batch_size, 1])
-  indices = tf.reshape(tf.range(FLAGS.batch_size), [FLAGS.batch_size, 1])
-  concated = tf.concat(1, [indices, sparse_labels])
-  dense_labels = tf.sparse_to_dense(concated,
-                                    [FLAGS.batch_size, NUM_CLASSES],
-                                    1.0, 0.0)
-
   # Calculate the average cross entropy loss across the batch.
-  cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
-      logits, dense_labels, name='cross_entropy_per_example')
+  labels = tf.cast(labels, tf.int64)
+  cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+      logits, labels, name='cross_entropy_per_example')
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
   tf.add_to_collection('losses', cross_entropy_mean)
 
@@ -354,7 +342,7 @@ def train(total_loss, global_step):
 
   # Add histograms for gradients.
   for grad, var in grads:
-    if grad:
+    if grad is not None:
       tf.histogram_summary(var.op.name + '/gradients', grad)
 
   # Track the moving averages of all trainable variables.
@@ -380,8 +368,7 @@ def maybe_download_and_extract():
       sys.stdout.write('\r>> Downloading %s %.1f%%' % (filename,
           float(count * block_size) / float(total_size) * 100.0))
       sys.stdout.flush()
-    filepath, _ = urllib.request.urlretrieve(DATA_URL, filepath,
-                                             reporthook=_progress)
+    filepath, _ = urllib.request.urlretrieve(DATA_URL, filepath, _progress)
     print()
     statinfo = os.stat(filepath)
     print('Successfully downloaded', filename, statinfo.st_size, 'bytes.')

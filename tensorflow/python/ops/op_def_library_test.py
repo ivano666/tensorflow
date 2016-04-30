@@ -75,6 +75,7 @@ ops.RegisterShape("ReservedInput")(None)
 ops.RegisterShape("Restrict")(None)
 ops.RegisterShape("Simple")(None)
 ops.RegisterShape("SimpleStruct")(None)
+ops.RegisterShape("TwoRefsIn")(None)
 ops.RegisterShape("TypeList")(None)
 ops.RegisterShape("TypeListRestrict")(None)
 ops.RegisterShape("TypeListTwice")(None)
@@ -1356,6 +1357,10 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     self._add_op("name: 'RefIn' "
                  "input_arg { name: 'a' type_attr: 'T' is_ref: true } "
                  "attr { name: 'T' type: 'type' } ")
+    self._add_op("name: 'TwoRefsIn' "
+                 "input_arg { name: 'a' type_attr: 'T' is_ref: true } "
+                 "input_arg { name: 'b' type_attr: 'T' is_ref: true } "
+                 "attr { name: 'T' type: 'type' } ")
     self._add_op("name: 'RefOut' "
                  "output_arg { name: 'a' type_attr: 'T' is_ref: true } "
                  "attr { name: 'T' type: 'type' } ")
@@ -1371,6 +1376,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     self.assertProtoEquals("""
       name: 'i' op: 'RefIn' input: 'o'
       attr { key: 'T' value { type: DT_BOOL } }
+      attr { key: "_class" value { list { s: "loc:@o" } } }
       """, op.node_def)
 
     # Can pass ref to non-ref input.
@@ -1386,15 +1392,26 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     self.assertEqual(str(cm.exception),
                      "Input 'a' of 'RefIn' Op requires l-value input")
 
+    input_a = self._lib.apply_op("RefOut", T=dtypes.int32, name="t")
+    input_b = self._lib.apply_op("RefOut", T=dtypes.int32, name="u")
+    op = self._lib.apply_op("TwoRefsIn", a=input_a, b=input_b, name="v")
+    # NOTE(mrry): The order of colocation constraints is an implementation
+    # detail.
+    self.assertProtoEquals("""
+      name: 'v' op: 'TwoRefsIn' input: 't' input: 'u'
+      attr { key: 'T' value { type: DT_INT32 } }
+      attr { key: "_class" value { list { s: "loc:@t" s: "loc:@u" } } }
+      """, op.node_def)
+
   def testSpecifyDevice(self):
-    with self._g.device("ADevice"):
+    with self._g.device("/job:ADevice"):
       self._lib.apply_op("Simple", a=3)
     # We look at the whole graph here to make sure the Const op is also given
     # the specified device.
     graph_def = self._g.as_graph_def()
     self.assertEqual(len(graph_def.node), 2)
     for node in graph_def.node:
-      self.assertEqual(node.device, "ADevice")
+      self.assertDeviceEqual(node.device, "/job:ADevice")
 
   def testStructuredOutputSingleList(self):
     self._add_op("name: 'SimpleStruct' "

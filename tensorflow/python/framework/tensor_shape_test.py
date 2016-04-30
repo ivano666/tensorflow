@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -144,6 +142,14 @@ class DimensionTest(test_util.TensorFlowTestCase):
                   tensor_shape.Dimension(None) != tensor_shape.Dimension(12))
     self.assertIs(None,
                   tensor_shape.Dimension(None) != tensor_shape.Dimension(None))
+
+  def testRepr(self):
+    self.assertEqual(repr(tensor_shape.Dimension(7)), "Dimension(7)")
+    self.assertEqual(repr(tensor_shape.Dimension(None)), "Dimension(None)")
+
+  def testStr(self):
+    self.assertEqual(str(tensor_shape.Dimension(7)), "7")
+    self.assertEqual(str(tensor_shape.Dimension(None)), "?")
 
 
 class ShapeTest(test_util.TensorFlowTestCase):
