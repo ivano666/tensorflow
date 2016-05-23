@@ -12,7 +12,7 @@ Examples of initialization of one or a batch of distributions.
 
 ```python
 # Define a single scalar Gaussian distribution.
-dist = tf.contrib.Gaussian(mu=0, sigma=3)
+dist = tf.contrib.distributions.Gaussian(mu=0, sigma=3)
 
 # Evaluate the cdf at 1, returning a scalar.
 dist.cdf(1)
@@ -103,6 +103,13 @@ The entropy of Gaussian distribution(s).
 
 
 *  <b>`entropy`</b>: tensor of dtype `dtype`, the entropy.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gaussian.is_reparameterized` {#Gaussian.is_reparameterized}
+
+
 
 
 - - -
