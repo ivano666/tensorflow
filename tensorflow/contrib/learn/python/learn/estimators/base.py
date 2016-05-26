@@ -1,5 +1,4 @@
-"""Base estimator class."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -12,17 +11,16 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+"""Base estimator class."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import datetime
 import json
 import os
-import shutil
 from six import string_types
-
-import numpy as np
 
 from google.protobuf import text_format
 from tensorflow.python.platform import gfile
@@ -240,9 +238,9 @@ class TensorFlowEstimator(estimator.Estimator):
         input_fn=predict_data_feeder.input_builder,
         feed_fn=predict_data_feeder.get_feed_dict_fn())
     if self.n_classes > 1 and axis != -1:
-      preds = preds['predictions'].argmax(axis=axis)
+      preds = preds.argmax(axis=axis)
     else:
-      preds = preds['predictions']
+      preds = preds
     return preds
 
   def predict(self, x, axis=1, batch_size=None):

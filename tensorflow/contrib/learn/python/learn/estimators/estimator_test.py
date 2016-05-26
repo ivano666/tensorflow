@@ -19,7 +19,10 @@ from __future__ import print_function
 
 import tempfile
 
+import numpy as np
 import tensorflow as tf
+
+from tensorflow.contrib.learn.python.learn.estimators._sklearn import mean_squared_error
 
 
 def boston_input_fn():
@@ -33,8 +36,35 @@ def boston_input_fn():
   return features, target
 
 
+def iris_input_fn():
+  iris = tf.contrib.learn.datasets.load_iris()
+  features = tf.cast(
+      tf.reshape(
+          tf.constant(iris.data), [-1, 4]), tf.float32)
+  target = tf.cast(
+      tf.reshape(
+          tf.constant(iris.target), [-1, 1]), tf.int32)
+  return features, target
+
+
+def boston_eval_fn():
+  boston = tf.contrib.learn.datasets.load_boston()
+  n_examples = len(boston.target)
+  features = tf.cast(
+      tf.reshape(
+          tf.constant(boston.data), [n_examples, 13]), tf.float32)
+  target = tf.cast(
+      tf.reshape(
+          tf.constant(boston.target), [n_examples, 1]), tf.float32)
+  return tf.concat(0, [features, features]), tf.concat(0, [target, target])
+
+
 def linear_model_fn(features, target, unused_mode):
   return tf.contrib.learn.models.linear_regression_zero_init(features, target)
+
+
+def logistic_model_fn(features, target, unused_mode):
+  return tf.contrib.learn.models.logistic_regression_zero_init(features, target)
 
 
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
@@ -57,12 +87,32 @@ class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
 class EstimatorTest(tf.test.TestCase):
 
-  def testTrain(self):
-    output_dir = tempfile.mkdtemp()
+  def testBostonAll(self):
+    boston = tf.contrib.learn.datasets.load_boston()
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
-                                     classification=False, model_dir=output_dir)
+                                     classification=False)
+    est.fit(x=boston.data, y=boston.target.astype(np.float32), steps=100)
+    scores = est.evaluate(
+        x=boston.data,
+        y=boston.target.astype(np.float32))
+    predictions = est.predict(x=boston.data)
+    other_score = mean_squared_error(predictions, boston.target)
+    self.assertAllClose(other_score, scores['mean_squared_error'])
+
+  def testIrisAll(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Estimator(model_fn=logistic_model_fn,
+                                     classification=True)
+    est.train(input_fn=iris_input_fn, steps=100)
+    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
+    predictions = est.predict(x=iris.data)
+    self.assertEqual(predictions.shape[0], iris.target.shape[0])
+
+  def testTrainInputFn(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
+                                     classification=False)
     est.train(input_fn=boston_input_fn, steps=1)
-    _ = est.evaluate(input_fn=boston_input_fn, steps=1)
+    _ = est.evaluate(input_fn=boston_eval_fn, steps=1)
 
   def testPredict(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
@@ -70,7 +120,15 @@ class EstimatorTest(tf.test.TestCase):
     boston = tf.contrib.learn.datasets.load_boston()
     est.train(input_fn=boston_input_fn, steps=1)
     output = est.predict(boston.data)
-    self.assertEqual(output['predictions'].shape[0], boston.target.shape[0])
+    self.assertEqual(output.shape[0], boston.target.shape[0])
+
+  def testPredictFn(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn,
+                                     classification=False)
+    boston = tf.contrib.learn.datasets.load_boston()
+    est.train(input_fn=boston_input_fn, steps=1)
+    output = est.predict(input_fn=boston_input_fn)
+    self.assertEqual(output.shape[0], boston.target.shape[0])
 
   def testWrongInput(self):
     def other_input_fn():

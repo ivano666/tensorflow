@@ -1,6 +1,4 @@
-"""Implementations of different data feeders to provide data for TF trainer."""
-
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -13,6 +11,8 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+"""Implementations of different data feeders to provide data for TF trainer."""
 
 # TODO(ipolosukhin): Replace this module with feed-dict queue runners & queues.
 
@@ -46,7 +46,7 @@ def _get_in_out_shape(x_shape, y_shape, n_classes, batch_size):
   # Skip first dimension if it is 1.
   if y_shape and y_shape[0] == 1:
     y_shape = y_shape[1:]
-  if n_classes > 1:
+  if n_classes is not None and n_classes > 1:
     output_shape = [batch_size] + y_shape + [n_classes]
   else:
     output_shape = [batch_size] + y_shape
@@ -441,7 +441,7 @@ class StreamingDataFeeder(DataFeeder):
 
         if self.y is not None:
           y = six.next(self.y)
-          if self.n_classes > 1:
+          if self.n_classes is not None and self.n_classes > 1:
             if len(self.output_shape) == 2:
               out.itemset((i, y), 1.0)
             else:

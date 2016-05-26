@@ -211,6 +211,7 @@ cc_library(
         "platform/mutex.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/regexp.h",
+        "platform/strong_hash.h",
         "platform/thread_annotations.h",
         "platform/types.h",
     ],
@@ -1276,6 +1277,10 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
     ],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
 )
 
 # GPU-related tests
